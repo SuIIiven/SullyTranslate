@@ -345,13 +345,15 @@ class Recognizer:
         self.transcribe(silence, "en", beam=1)
         self.transcribe(silence, "en", beam=5)
 
-    def pick_language(self, audio):
-        """Spoken language for this clip, or None if it isn't one we're listening for."""
+    def pick_language(self, audio, strict=False):
+        """Spoken language for this clip, or None if it isn't one we're listening for. `strict` (for very
+        short clips, where a breath or click can look like any language) demands a confident match."""
         _, _, probs = self.model.detect_language(audio)
         new = dict(probs)
         if self.args.listen:
             best = max(self.args.listen, key=lambda l: new.get(l, 0.0))
-            return best if new.get(best, 0.0) >= self.args.listen_min_prob else None
+            needed = max(self.args.listen_min_prob, 0.6) if strict else self.args.listen_min_prob
+            return best if new.get(best, 0.0) >= needed else None
         # hysteresis so short clips don't flip the language back and forth
         a = 0.6
         keys = set(new) | set(self.lang_scores)
@@ -397,7 +399,8 @@ class Recognizer:
             audio = np.concatenate(buf)
             buf, in_speech, silence = [], False, 0.0
             if len(audio) >= int(0.5 * SR):
-                lang = self.pick_language(audio)
+                # buf holds ~1 s of pre-roll + trailing silence, so < 2.5 s means under ~1.5 s of sound
+                lang = self.pick_language(audio, strict=len(audio) < 2.5 * SR)
                 text = self.transcribe(audio, lang, beam=5) if lang else ""
                 if text:
                     rev += 1
@@ -449,8 +452,8 @@ class Recognizer:
                 audio = np.concatenate(buf)
                 if len(audio) >= SR:
                     last_partial = now
-                    if utt_lang is None:
-                        utt_lang = self.pick_language(audio) or ""
+                    if not utt_lang:                  # not decided yet: retry as more speech arrives
+                        utt_lang = self.pick_language(audio, strict=len(audio) < 2 * SR) or ""
                     text = self.transcribe(audio, utt_lang, beam=1) if utt_lang else ""
                     if text and text != last_text:
                         last_text = text
@@ -509,7 +512,9 @@ OBS_DEFAULTS = {
     "outline": True, "outline_size": 4, "outline_color": 0xFF000000, "shadow": True,
     "bg": False, "bg_color": 0xFF000000, "bg_opacity": 60, "align": "center",
     "orig_size": 30, "orig_color": 0xFFD0D0D0,
+    "test": 0, "test_file": "",
 }
+SAMPLE_FILE = os.path.join(HERE, "samples", "slovak-test.ogg")   # built-in test clip (see samples/README.md)
 
 
 class CaptionFeed:
@@ -656,6 +661,19 @@ def _respawn():
     os._exit(0)
 
 
+def decode_file(path):
+    """Any audio file (wav, mp3, ogg, opus, m4a, flac, video soundtracks) -> float32 mono 16 kHz."""
+    import av
+    import numpy as np
+    out = []
+    resampler = av.AudioResampler(format="s16", layout="mono", rate=SR)
+    with av.open(path) as container:
+        for frame in container.decode(audio=0):
+            out += [f.to_ndarray().reshape(-1) for f in resampler.resample(frame)]
+        out += [f.to_ndarray().reshape(-1) for f in resampler.resample(None)]   # flush
+    return np.concatenate(out).astype(np.float32) / 32768.0 if out else np.zeros(0, np.float32)
+
+
 def serve(args):
     d = args.serve
     os.makedirs(d, exist_ok=True)
@@ -691,10 +709,12 @@ def serve(args):
     engine_key = tuple(s[k] for k in ENGINE_KEYS)
     opts = caption_options(args, s)
     started = time.time()
+    pending_tests = []                                 # test-file paths requested via the OBS button
+    last_test = s["test"]
 
     def control():
         """Live settings, style, heartbeat, microphone list: runs even while models load."""
-        nonlocal opts, meta
+        nonlocal opts, meta, last_test
         seen, last_meta, last_alive = None, time.monotonic(), 0.0
         while True:
             time.sleep(0.2)
@@ -724,6 +744,9 @@ def serve(args):
                 _write_json(p("style.json"), {"kind": new_kind, "tr": text_style(new_kind, new, False),
                                               "orig": text_style(new_kind, new, True)})
                 opts = caption_options(args, new)
+                if new["test"] != last_test:
+                    last_test = new["test"]
+                    pending_tests.append(new["test_file"].strip() or SAMPLE_FILE)
             if time.monotonic() - last_meta > 5:
                 last_meta = time.monotonic()
                 fresh = {"inputs": list_inputs(), "default_input": default_input()}
@@ -761,20 +784,65 @@ def serve(args):
     publish(status="warming up…")
     rec.warmup()
     tr.warmup()
-    audio_q, stop = queue.Queue(), threading.Event()
-    threading.Thread(target=capture, args=(source, audio_q, stop), daemon=True).start()
+    # Microphone audio goes through a gate so a test file can stand in for it while it plays.
+    mic_q, audio_q, stop, injecting = queue.Queue(), queue.Queue(), threading.Event(), threading.Event()
+
+    def gate():
+        while True:
+            chunk = mic_q.get()
+            if chunk is None:
+                audio_q.put(None)
+                return
+            if not injecting.is_set():
+                audio_q.put(chunk)
+
+    threading.Thread(target=capture, args=(source, mic_q, stop), daemon=True).start()
+    threading.Thread(target=gate, daemon=True).start()
     worker = threading.Thread(target=rec.run, args=(audio_q, tr), daemon=True)
     worker.start()
     hw = "GPU" if args.device == "cuda" else "CPU"
-    publish(status=f"listening: {ids.get(source, source)} · {args.model} on {hw}")
+    listening = f"listening: {ids.get(source, source)} · {args.model} on {hw}"
+    publish(status=listening)
     print(f"{APP}: ready; source {source}, model {args.model}, translation {args.mt_model}, {hw}")
+    finals = [0]                                       # finished lines so far (to report test results)
+
+    def play_test(path):
+        """Feed an audio file through the pipeline in real time instead of the microphone."""
+        import numpy as np
+        try:
+            audio = decode_file(path)
+        except Exception as e:
+            print(f"{APP}: test file {path!r} unreadable: {e!r}")
+            publish(status=f"error: can't read the test file {os.path.basename(path)} ({e})")
+            return
+        before = finals[0]
+        print(f"{APP}: playing test file {path} ({len(audio) / SR:.1f} s)")
+        publish(status=f"playing test file {os.path.basename(path)} ({len(audio) / SR:.0f} s): watch the captions")
+        audio = np.concatenate([audio, np.zeros(int(1.5 * SR), np.float32)])   # trailing pause ends the last line
+        injecting.set()
+        t0 = time.monotonic()
+        for i, start in enumerate(range(0, len(audio), CHUNK)):
+            chunk = audio[start:start + CHUNK]
+            audio_q.put(np.pad(chunk, (0, CHUNK - len(chunk))))
+            time.sleep(max(0.0, t0 + (i + 1) * CHUNK / SR - time.monotonic()))   # real-time pace
+        injecting.clear()
+        time.sleep(2.0)
+        lines = finals[0] - before
+        print(f"{APP}: test file done, {lines} line(s) subtitled")
+        publish(status=f"{listening} · test OK: {lines} line(s) subtitled" if lines else
+                "test finished but nothing was subtitled: tick the language spoken in the file under "
+                "'Languages you speak' (the built-in sample is Slovak)")
+
+    tester = None
 
     feed = CaptionFeed()
     while True:
         now = time.monotonic()
         try:
             while True:
-                feed.feed(ev_q.get(timeout=0.05), opts, now)
+                ev = ev_q.get(timeout=0.05)
+                finals[0] += ev[0] == "final"
+                feed.feed(ev, opts, now)
         except queue.Empty:
             pass
         feed.tick(time.monotonic())
@@ -782,6 +850,9 @@ def serve(args):
             publish(tr=feed.tr, orig=feed.orig)
         if not worker.is_alive() and "error" not in caption["status"]:
             publish(status="error: the audio input stopped (see engine.log); pick another microphone")
+        if pending_tests and (tester is None or not tester.is_alive()):
+            tester = threading.Thread(target=play_test, args=(pending_tests.pop(0),), daemon=True)
+            tester.start()
 
 
 def run_cli(ev_q, stop):

@@ -16,6 +16,7 @@ step "Installing SullyTranslate into $DEST"
 mkdir -p "$DEST/state" "$DEST/tools"
 if [ "$SRC" != "$DEST" ]; then
   cp "$SRC"/{sullytranslate.py,SullyTranslate.lua,setup_obs.py,requirements.txt,requirements-gpu.txt,README.md,LICENSE,install.sh} "$DEST/"
+  cp -r "$SRC/samples" "$DEST/"
 fi
 
 step "Getting uv (private Python manager)"

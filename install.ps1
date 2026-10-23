@@ -26,6 +26,7 @@ try {
                        "requirements-gpu.txt", "README.md", "LICENSE", "install.ps1", "install.bat") {
             Copy-Item (Join-Path $Src $f) $Dest -Force
         }
+        Copy-Item (Join-Path $Src "samples") $Dest -Recurse -Force
     }
 
     Step "Getting uv (private Python manager)"

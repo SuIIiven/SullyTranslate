@@ -90,7 +90,10 @@ Close OBS when the installer asks. Pass a folder to install somewhere else: `./i
 2. Check the **Status** line at the top. It should say `listening: <your microphone>`. On the very first start
    it says `loading models` for up to a minute.
 3. Under **Speech**:
-   - Choose your **Microphone** (or keep "Default microphone").
+   - Choose the **Microphone**: the input the speaker's voice arrives on. For your own voice, that is your
+     microphone. For someone in a Discord call, game chat, or a video you are watching, your microphone never
+     hears them: on Linux choose the **Monitor of** your speakers or headset; on Windows choose **Stereo Mix**
+     or a device ending in **[Loopback]** if your sound card offers one in the list.
    - Tick the **languages you speak**. Speech in any other language is ignored. Tick nothing to detect any
      language.
    - Choose **Translate into**.
@@ -100,7 +103,12 @@ Close OBS when the installer asks. Pass a folder to install somewhere else: `./i
 5. Close the Scripts window and position the `SullyTranslate: translation` source in your scene. Turn on
    **Also show what was said** if you want the original sentence in the second source as well.
 
-Speak a sentence: the translation appears in the text source and disappears after the hold time.
+6. Under **Test captions**, click **Play test file**. The built-in sample is three Slovak sentences (tick
+   **Slovak** first); captions should appear within a few seconds and the Status line then reports
+   `test OK: 3 line(s) subtitled`. Choose any audio file of your own (wav, mp3, ogg, m4a, flac) to test
+   another language or speaker. While a test file plays, it replaces the microphone.
+
+Then speak a sentence: the translation appears in the text source and disappears after the hold time.
 
 ## Settings
 
@@ -142,6 +150,13 @@ else applies instantly.
 | Alignment (Windows) | Left, center, or right alignment inside the wrap width. |
 | Drop shadow (Linux) | Shadow behind the text. |
 | Original text size and color | Look of the `SullyTranslate: original` source. |
+
+### Test captions
+
+| Setting | What it does |
+|---|---|
+| Audio file | File to play through speech recognition and translation. Empty = the built-in Slovak sample ([samples/README.md](samples/README.md)). |
+| Play test file | Plays the file in real time instead of the microphone; the Status line reports how many lines were subtitled, or which setting stopped them. |
 
 ### Buttons
 
@@ -228,7 +243,8 @@ logs are in two places:
 | Status says `engine not found` | Run `install.bat` again. The script finds the engine when it sits in the install folder, or when it was copied into OBS's own scripts folder and SullyTranslate is installed in the default location (`%LOCALAPPDATA%\SullyTranslate` or `C:\SullyTranslate` on Windows, `~/.local/share/SullyTranslate` or `~/SullyTranslate` on Linux). |
 | Status stays at `loading models` | First start after installing a new model can take a few minutes. Check `engine.log` for download errors. |
 | Status starts with `error:` | Read the message and the end of `engine.log`. Often the selected microphone was unplugged: choose another one. |
-| No captions, status says `listening` | Check the right microphone is selected. Untick all languages to rule out language filtering. Speak a full sentence and pause. |
+| No captions, status says `listening` | Click **Play test file**: if the sample is subtitled, the problem is the input, not the captions. Check the right microphone is selected (someone on a call needs the speaker/headset monitor, not your mic). Untick all languages to rule out language filtering. Speak a full sentence and pause. |
+| A speaker's language is ignored or translated the wrong way | Their language must be ticked under **Languages you speak**, and **Translate into** must be the language you want to read (for example Slovak ticked, Translate into English). |
 | Captions appear in the wrong scene or are missing | Click **Add caption sources to the current scene**. |
 | Some sentences are skipped | They were detected as a language you did not tick. Similar languages (for example Slovak and Czech) can be confused on short sentences: tick both. |
 | Words are misrecognized | Add them to **Words to prefer**. Use `large-v3` rather than turbo. |
@@ -283,4 +299,5 @@ On Windows use `.venv\Scripts\python.exe` instead of `.venv/bin/python`. Run wit
 ## License
 
 SullyTranslate is released under the [MIT License](LICENSE). The models it downloads have their own licenses;
-see [Translation models and licensing](#translation-models-and-licensing).
+see [Translation models and licensing](#translation-models-and-licensing). The built-in test sample is from
+Google's FLEURS dataset (CC BY 4.0); see [samples/README.md](samples/README.md).

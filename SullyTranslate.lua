@@ -239,6 +239,13 @@ local function on_refresh(props, prop)
   return true
 end
 
+local function on_play_test(props, prop)
+  obs.obs_data_set_int(current, "test", obs.obs_data_get_int(current, "test") + 1)
+  write_settings()                                   -- the engine plays the file instead of the microphone
+  status = "test requested; click Refresh status to follow it"
+  return true
+end
+
 function script_description()
   return "<h3>" .. APP .. "</h3>Live translated subtitles from your microphone, shown in two text sources " ..
          "(<i>" .. SRC_TR .. "</i> and <i>" .. SRC_ORIG .. "</i>). Move and resize them in your scene like any " ..
@@ -250,6 +257,13 @@ function script_properties()
   obs.obs_properties_add_text(props, "status_info", "Status: " .. status, obs.OBS_TEXT_INFO)
   obs.obs_properties_add_button(props, "refresh", "Refresh status / microphones", on_refresh)
   local meta = load_meta()
+
+  -- test: plays an audio file through recognition + translation instead of the microphone
+  local tp = obs.obs_properties_create()
+  obs.obs_properties_add_path(tp, "test_file", "Audio file (empty = built-in Slovak sample)", obs.OBS_PATH_FILE,
+    "Audio files (*.wav *.mp3 *.ogg *.opus *.m4a *.flac);;All files (*.*)", nil)
+  obs.obs_properties_add_button(tp, "play_test", "Play test file", on_play_test)
+  obs.obs_properties_add_group(props, "test_group", "Test captions", obs.OBS_GROUP_NORMAL, tp)
 
   -- speech
   local sp = obs.obs_properties_create()
@@ -368,6 +382,8 @@ function script_defaults(settings)
   obs.obs_data_set_default_string(settings, "align", "center")
   obs.obs_data_set_default_int(settings, "orig_size", 30)
   obs.obs_data_set_default_int(settings, "orig_color", 0xFFD0D0D0)
+  obs.obs_data_set_default_int(settings, "test", 0)
+  obs.obs_data_set_default_string(settings, "test_file", "")
 end
 
 function script_update(settings)
