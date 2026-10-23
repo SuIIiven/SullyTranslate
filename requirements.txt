@@ -1,0 +1,4 @@
+faster-whisper>=1.2,<2
+numpy
+sentencepiece
+sounddevice>=0.5; sys_platform == "win32"
