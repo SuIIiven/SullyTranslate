@@ -23,7 +23,8 @@ try {
     New-Item -ItemType Directory -Force -Path $Dest, "$Dest\state", "$Dest\tools" | Out-Null
     if ((Resolve-Path $Src).Path -ne (Resolve-Path $Dest).Path) {
         foreach ($f in "sullytranslate.py", "SullyTranslate.lua", "setup_obs.py", "requirements.txt",
-                       "requirements-gpu.txt", "README.md", "LICENSE", "install.ps1", "install.bat") {
+                       "requirements-gpu.txt", "README.md", "LICENSE", "install.ps1", "install.bat",
+                       "uninstall.ps1", "uninstall.bat") {
             Copy-Item (Join-Path $Src $f) $Dest -Force
         }
         Copy-Item (Join-Path $Src "samples") $Dest -Recurse -Force
@@ -42,6 +43,7 @@ try {
         Remove-Item $zip, $tmp -Recurse -Force
     }
     $env:UV_PYTHON_INSTALL_DIR = Join-Path $Dest "tools\python"    # keep Python inside the install folder
+    if (-not $env:UV_CACHE_DIR) { $env:UV_CACHE_DIR = Join-Path $Dest "tools\uv-cache" }   # uninstall removes it too
 
     Step "Creating Python environment"
     Run $uv venv --python 3.12 --clear "$Dest\.venv"

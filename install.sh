@@ -15,7 +15,7 @@ done
 step "Installing SullyTranslate into $DEST"
 mkdir -p "$DEST/state" "$DEST/tools"
 if [ "$SRC" != "$DEST" ]; then
-  cp "$SRC"/{sullytranslate.py,SullyTranslate.lua,setup_obs.py,requirements.txt,requirements-gpu.txt,README.md,LICENSE,install.sh} "$DEST/"
+  cp "$SRC"/{sullytranslate.py,SullyTranslate.lua,setup_obs.py,requirements.txt,requirements-gpu.txt,README.md,LICENSE,install.sh,uninstall.sh} "$DEST/"
   cp -r "$SRC/samples" "$DEST/"
 fi
 
@@ -30,6 +30,7 @@ if [ -z "$UV" ]; then
   fi
 fi
 export UV_PYTHON_INSTALL_DIR="$DEST/tools/python"   # keep Python inside the install folder
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$DEST/tools/uv-cache}"   # and the download cache, so uninstall removes it
 
 step "Creating Python environment"
 "$UV" venv --python 3.12 --clear "$DEST/.venv"

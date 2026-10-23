@@ -21,6 +21,18 @@ local shown_tr, shown_orig = nil, nil
 local status = "engine not started yet"
 local last_launch = 0
 local sources_ready = false
+-- OBS runs scripts before it has loaded the scene collection's saved sources. Creating the caption
+-- sources before that finishes makes duplicates (ours + the saved ones), so wait for OBS to say it's done;
+-- if the script is added to an already-running OBS that signal never comes, hence the timeout.
+local frontend_ready = false
+local loaded_at = 0
+local FRONTEND_TIMEOUT = 15
+
+local function on_frontend_event(event)
+  if event == obs.OBS_FRONTEND_EVENT_FINISHED_LOADING or event == obs.OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED then
+    frontend_ready = true
+  end
+end
 
 if WINDOWS then
   ffi.cdef [[ int WinExec(const char *lpCmdLine, unsigned int uCmdShow); ]]
@@ -169,10 +181,10 @@ end
 -- ------------------------------------------------------------------ timers
 
 local function tick()
-  if not sources_ready then
+  if not sources_ready and (frontend_ready or os.time() - loaded_at >= FRONTEND_TIMEOUT) then
     sources_ready = ensure_sources(false)
-    if not sources_ready then return end
   end
+  if not sources_ready then return end
   local style = read_file(state_dir .. "style.json")
   if style ~= nil and style ~= last_style and apply_style(style) then
     last_style = style
@@ -421,6 +433,8 @@ function script_load(settings)
   write_settings()
   write_file(state_dir .. "heartbeat", tostring(os.time()))
   launch_engine()
+  loaded_at = os.time()
+  obs.obs_frontend_add_event_callback(on_frontend_event)
   obs.timer_add(tick, 100)
   obs.timer_add(heartbeat, 1000)
 end
@@ -428,5 +442,6 @@ end
 function script_unload()
   obs.timer_remove(tick)
   obs.timer_remove(heartbeat)
+  obs.obs_frontend_remove_event_callback(on_frontend_event)
   write_file(state_dir .. "heartbeat", "stop")
 end

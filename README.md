@@ -270,12 +270,22 @@ already-downloaded models are kept.
 ## Uninstalling
 
 1. Close OBS.
-2. Remove the script from OBS: in the install folder run
-   `.venv\Scripts\python.exe setup_obs.py --remove SullyTranslate.lua` (Linux:
-   `.venv/bin/python setup_obs.py --remove SullyTranslate.lua`), or in OBS open Tools > Scripts, select
-   SullyTranslate.lua, and click the `-` button.
-3. Delete the two `SullyTranslate:` text sources from your scenes.
-4. Delete the install folder. This removes the private Python, the libraries, and the models.
+2. **Windows:** double-click `uninstall.bat` in the install folder (`%LOCALAPPDATA%\SullyTranslate`).
+   **Linux:** run `./uninstall.sh` in the install folder.
+3. Type `y` to confirm.
+
+The uninstaller:
+
+- Removes `SullyTranslate.lua` and both `SullyTranslate:` text sources from every OBS scene collection
+- Deletes the script from OBS's own scripts folder if you put it there (Windows asks for administrator
+  permission for this, Linux for your password)
+- Stops the speech engine and deletes the install folder: the private Python, the libraries, the models, and
+  the download cache
+- Deletes the scene collection backups the installer made
+
+Your other scenes, sources, and OBS settings are not touched. If the install folder is a `git clone` of this
+repository, the source code is kept and only the generated files (`.venv`, `models`, `tools`, `state`) are
+deleted.
 
 ## Command-line use
 

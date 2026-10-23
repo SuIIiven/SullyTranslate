@@ -52,16 +52,85 @@ def same_path(a, b):
     return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
+SOURCE_NAMES = {"SullyTranslate: translation", "SullyTranslate: original"}
+
+
+def is_our_script(entry):
+    return os.path.basename(entry.get("path", "").replace("\\", "/")).lower() == "sullytranslate.lua"
+
+
+def strip_collection(data):
+    """Remove SullyTranslate's script entries and caption sources from one scene collection (in place).
+    Returns a description of what was removed, empty if nothing was there."""
+    removed = []
+    modules = data.get("modules") or {}
+    scripts = modules.get("scripts-tool")
+    if isinstance(scripts, list) and any(is_our_script(s) for s in scripts):
+        modules["scripts-tool"] = [s for s in scripts if not is_our_script(s)]
+        removed.append("script")
+    for key in ("sources", "groups"):
+        sources = data.get(key)
+        if not isinstance(sources, list):
+            continue
+        kept = [s for s in sources if s.get("name") not in SOURCE_NAMES]
+        if len(kept) != len(sources):
+            removed.append(f"{len(sources) - len(kept)} caption source(s)")
+            data[key] = kept
+        for s in kept:                                   # scenes and groups list their contents by name
+            items = (s.get("settings") or {}).get("items")
+            if isinstance(items, list):
+                s["settings"]["items"] = [i for i in items if i.get("name") not in SOURCE_NAMES]
+    return removed
+
+
+def write_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def remove_everywhere():
+    """Uninstall: clean every scene collection and delete the backups the installer made."""
+    scenes = os.path.join(obs_config_dir(), "basic", "scenes")
+    if not os.path.isdir(scenes):
+        print("No OBS scene collections found; nothing to remove from OBS.")
+        return 0
+    for name in sorted(os.listdir(scenes)):
+        path = os.path.join(scenes, name)
+        if name.endswith(".sullytranslate-backup"):
+            os.remove(path)
+            continue
+        if not name.endswith(".json"):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            print(f"Skipped {name}: not readable as a scene collection.")
+            continue
+        removed = strip_collection(data)
+        if removed:
+            write_json(path, data)
+            print(f"Removed from OBS scene collection '{name[:-5]}': {', '.join(removed)}.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("script", help="path to SullyTranslate.lua")
-    ap.add_argument("--remove", action="store_true", help="remove the script instead of adding it")
+    ap.add_argument("script", nargs="?", help="path to SullyTranslate.lua (needed to add it)")
+    ap.add_argument("--remove", action="store_true",
+                    help="uninstall: remove the script and both caption sources from every scene collection")
     args = ap.parse_args()
-    script = os.path.abspath(args.script)
 
     if obs_running():
         print("OBS is running: close it and run this again (OBS overwrites its scenes when it exits).")
         return 2
+    if args.remove:
+        return remove_everywhere()
+    if not args.script:
+        ap.error("give the path to SullyTranslate.lua")
+    script = os.path.abspath(args.script)
     collection = current_collection(obs_config_dir())
     if collection is None:
         print("No OBS scene collection found: start OBS once, close it, then run this again.\n"
@@ -71,25 +140,13 @@ def main():
     with open(collection, encoding="utf-8") as f:
         data = json.load(f)
     scripts = data.setdefault("modules", {}).setdefault("scripts-tool", [])
-    present = [s for s in scripts if same_path(s.get("path", ""), script)]
-    if args.remove:
-        if not present:
-            print(f"Not registered in {collection}")
-            return 0
-        scripts[:] = [s for s in scripts if s not in present]
-    else:
-        if present:
-            print(f"Already in OBS ({os.path.basename(collection)}).")
-            return 0
-        scripts.append({"path": script.replace("\\", "/"), "settings": {}})
-
+    if any(same_path(s.get("path", ""), script) for s in scripts):
+        print(f"Already in OBS ({os.path.basename(collection)}).")
+        return 0
+    scripts.append({"path": script.replace("\\", "/"), "settings": {}})
     shutil.copy2(collection, collection + ".sullytranslate-backup")
-    tmp = collection + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-    os.replace(tmp, collection)
-    action = "Removed from" if args.remove else "Added to"
-    print(f"{action} OBS scene collection '{os.path.splitext(os.path.basename(collection))[0]}' "
+    write_json(collection, data)
+    print(f"Added to OBS scene collection '{os.path.splitext(os.path.basename(collection))[0]}' "
           f"(backup: {os.path.basename(collection)}.sullytranslate-backup).")
     return 0
 
