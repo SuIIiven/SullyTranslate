@@ -225,7 +225,7 @@ logs are in two places:
 
 | Problem | What to do |
 |---|---|
-| Status says `engine not installed` | Run `install.bat` again. The script must stay in the install folder. |
+| Status says `engine not found` | Run `install.bat` again. The script finds the engine when it sits in the install folder, or when it was copied into OBS's own scripts folder and SullyTranslate is installed in the default location (`%LOCALAPPDATA%\SullyTranslate` or `C:\SullyTranslate` on Windows, `~/.local/share/SullyTranslate` or `~/SullyTranslate` on Linux). |
 | Status stays at `loading models` | First start after installing a new model can take a few minutes. Check `engine.log` for download errors. |
 | Status starts with `error:` | Read the message and the end of `engine.log`. Often the selected microphone was unplugged: choose another one. |
 | No captions, status says `listening` | Check the right microphone is selected. Untick all languages to rule out language filtering. Speak a full sentence and pause. |

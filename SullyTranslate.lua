@@ -78,7 +78,7 @@ local function launch_engine()
   last_launch = os.time()
   local py, engine = engine_python(), dir .. "sullytranslate.py"
   if not exists(py) or not exists(engine) then
-    status = "engine not installed in " .. dir .. " (run the installer)"
+    status = "engine not found (looked in " .. dir .. " and the standard install folders); run the installer"
     print(APP .. ": " .. status)
     return
   end
@@ -375,10 +375,30 @@ function script_update(settings)
   write_settings()
 end
 
+-- The engine lives next to this script after a normal install. If the script was copied (or linked) into
+-- OBS's own scripts folder instead, fall back to the installers' default locations.
+local function find_install(script_dir)
+  local candidates = { script_dir }
+  if WINDOWS then
+    local appdata = os.getenv("LOCALAPPDATA")
+    if appdata then table.insert(candidates, appdata .. "\\SullyTranslate\\") end
+    table.insert(candidates, "C:\\SullyTranslate\\")
+  else
+    local home = os.getenv("HOME") or ""
+    table.insert(candidates, home .. "/.local/share/SullyTranslate/")
+    table.insert(candidates, home .. "/SullyTranslate/")
+  end
+  for _, d in ipairs(candidates) do
+    if exists(d .. "sullytranslate.py") then return d end
+  end
+  return script_dir
+end
+
 function script_load(settings)
   local sep = WINDOWS and "\\" or "/"
-  dir = script_path():gsub("[/\\]", sep)
-  if dir:sub(-1) ~= sep then dir = dir .. sep end
+  local here = script_path():gsub("[/\\]", sep)
+  if here:sub(-1) ~= sep then here = here .. sep end
+  dir = find_install(here)
   state_dir = dir .. "state" .. sep
   kind = text_kind()
   current = settings
