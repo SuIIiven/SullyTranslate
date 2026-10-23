@@ -25,6 +25,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 os.environ.setdefault("HF_HOME", os.path.join(HERE, "models"))   # everything lives in the install folder
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")       # Windows without developer mode copies instead
+os.environ.setdefault("HF_HUB_VERBOSITY", "error")                   # no "unauthenticated requests" nag; no token needed
+# Approximate download sizes in GB, shown before the installer fetches them.
+MODEL_GB = {"large-v3": 3.1, "large-v3-turbo": 1.6, "medium": 1.5, "small": 0.5,
+            "m2m": 1.2, "m2m-small": 0.5, "nllb": 3.4, "nllb-fast": 1.4}
 SR = 16000
 FRAME = 512                 # Silero VAD frame (32 ms @ 16 kHz)
 CHUNK = FRAME * 8           # 256 ms read granularity
@@ -1100,8 +1104,10 @@ def main():
         from faster_whisper.utils import download_model
         from huggingface_hub import snapshot_download
         resolve_hardware(args)
+        size = MODEL_GB.get(args.model, 0) + MODEL_GB.get(args.mt_model, 0)
         print(f"{APP}: {'NVIDIA GPU found' if args.device == 'cuda' else 'no NVIDIA GPU; using CPU'}; "
-              f"downloading {args.model} + {args.mt_model}", flush=True)
+              f"downloading {args.model} + {args.mt_model} (about {size:.1f} GB; several minutes on a slow "
+              "connection, progress bars below)", flush=True)
         download_model(args.model)
         repo, revision = MT_MODELS[args.mt_model]
         snapshot_download(repo, revision=revision)
