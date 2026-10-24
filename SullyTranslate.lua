@@ -21,6 +21,7 @@ local shown_tr, shown_orig = nil, nil
 local status = "engine not started yet"
 local last_launch = 0
 local sources_ready = false
+local last_active = nil   -- last on-screen state written to state/active
 -- OBS runs scripts before it has loaded the scene collection's saved sources. Creating the caption
 -- sources before that finishes makes duplicates (ours + the saved ones), so wait for OBS to say it's done;
 -- if the script is added to an already-running OBS that signal never comes, hence the timeout.
@@ -185,6 +186,18 @@ local function tick()
     sources_ready = ensure_sources(false)
   end
   if not sources_ready then return end
+  -- "showing" covers the live scene, nested scenes/groups and the Studio Mode preview; a hidden item is off.
+  local active = not obs.obs_data_get_bool(current, "pause_hidden")
+  for _, name in ipairs({ SRC_TR, SRC_ORIG }) do
+    local source = obs.obs_get_source_by_name(name)
+    if source ~= nil then
+      active = active or obs.obs_source_showing(source)
+      obs.obs_source_release(source)
+    end
+  end
+  if active ~= last_active and write_file(state_dir .. "active", active and "1" or "0") then
+    last_active = active
+  end
   local style = read_file(state_dir .. "style.json")
   if style ~= nil and style ~= last_style and apply_style(style) then
     last_style = style
@@ -328,6 +341,8 @@ function script_properties()
   obs.obs_properties_add_bool(cp, "partials", "Show words live while speaking")
   obs.obs_properties_add_bool(cp, "show_original", "Also show what was said (original source)")
   obs.obs_properties_add_int(cp, "width", "Wrap width in pixels (0 = one line)", 0, 7680, 10)
+  obs.obs_properties_add_bool(cp, "pause_hidden",
+    "Pause when the captions aren't in the current scene (saves CPU/GPU)")
   obs.obs_properties_add_group(props, "captions", "Captions", obs.OBS_GROUP_NORMAL, cp)
 
   -- style
@@ -396,6 +411,7 @@ function script_defaults(settings)
   obs.obs_data_set_default_int(settings, "orig_color", 0xFFD0D0D0)
   obs.obs_data_set_default_int(settings, "test", 0)
   obs.obs_data_set_default_string(settings, "test_file", "")
+  obs.obs_data_set_default_bool(settings, "pause_hidden", true)
 end
 
 function script_update(settings)

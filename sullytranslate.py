@@ -516,7 +516,7 @@ OBS_DEFAULTS = {
     "outline": True, "outline_size": 4, "outline_color": 0xFF000000, "shadow": True,
     "bg": False, "bg_color": 0xFF000000, "bg_opacity": 60, "align": "center",
     "orig_size": 30, "orig_color": 0xFFD0D0D0,
-    "test": 0, "test_file": "",
+    "test": 0, "test_file": "", "pause_hidden": True,
 }
 SAMPLE_FILE = os.path.join(HERE, "samples", "slovak-test.ogg")   # built-in test clip (see samples/README.md)
 
@@ -797,9 +797,19 @@ def serve(args):
             if chunk is None:
                 audio_q.put(None)
                 return
-            if not injecting.is_set():
+            if not injecting.is_set() and not paused.is_set():   # paused: no recognition, no translation
                 audio_q.put(chunk)
 
+    def on_screen():
+        """False when OBS says neither caption source is visible (file written by SullyTranslate.lua)."""
+        try:
+            with open(p("active")) as f:
+                return f.read().strip() != "0"
+        except OSError:
+            return True
+
+    import numpy as np
+    paused = threading.Event()
     threading.Thread(target=capture, args=(source, mic_q, stop), daemon=True).start()
     threading.Thread(target=gate, daemon=True).start()
     worker = threading.Thread(target=rec.run, args=(audio_q, tr), daemon=True)
@@ -850,6 +860,20 @@ def serve(args):
         except queue.Empty:
             pass
         feed.tick(time.monotonic())
+        visible = on_screen()
+        if not visible and not paused.is_set():
+            paused.set()
+            for _ in range(int(2 * SR / CHUNK)):       # ~2 s of silence ends any sentence in progress
+                audio_q.put(np.zeros(CHUNK, np.float32))
+            feed.tr = feed.orig = ""
+            feed.clear_at = None
+            print(f"{APP}: captions are off screen; paused")
+            publish(status="paused: the caption sources aren't in the current scene "
+                           "(switch to a scene with them to resume)")
+        elif visible and paused.is_set():
+            paused.clear()
+            print(f"{APP}: captions are on screen again; listening")
+            publish(status=listening)
         if (feed.tr, feed.orig) != (caption["tr"], caption["orig"]):
             publish(tr=feed.tr, orig=feed.orig)
         if not worker.is_alive() and "error" not in caption["status"]:

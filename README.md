@@ -138,6 +138,7 @@ else applies instantly.
 | Show words live while speaking | Updates the caption about once per second while you talk. Turn off to show only finished sentences. |
 | Also show what was said | Puts the original sentence in the `SullyTranslate: original` source. |
 | Wrap width | Line width in pixels before the text wraps. 0 keeps everything on one line. |
+| Pause when the captions aren't in the current scene | On by default. While neither caption source is visible (you switched to a scene without them, or hid them with the eye icon), the engine stops listening, so no speech recognition or translation runs. It resumes within about a second when they are visible again: in the live scene, inside a nested scene or group, or in the Studio Mode preview. The status line shows `paused` meanwhile. |
 
 ### Style
 
@@ -228,6 +229,10 @@ Measured on an NVIDIA RTX 3090 Ti with the default models (`large-v3` and M2M-10
 Video memory use is about 5.6 GB. On GPUs with less memory, choose `large-v3-turbo` and M2M-100 418M. Without
 an NVIDIA GPU everything runs on the CPU with smaller models; expect captions to arrive noticeably later than
 on a GPU.
+
+While paused (see [Captions](#captions)) the engine uses almost no CPU or GPU: in testing, 0.5 seconds of CPU
+time over 30 seconds of speech, against 31 seconds when live. The models stay loaded in memory so captions
+resume instantly.
 
 ## Troubleshooting
 
